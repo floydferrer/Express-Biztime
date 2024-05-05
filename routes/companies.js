@@ -1,5 +1,6 @@
 const express = require('express');
-const ExpressError = require('../expressError')
+const ExpressError = require('../expressError');
+const slugify = require('slugify');
 const router = express.Router();
 const db = require('../db');
 
@@ -30,14 +31,26 @@ router.get('/:code', async(req, res, next) => {
             [code]
         );
 
+        const indResults = await db.query(
+            `SELECT i.industry FROM companies AS c
+            JOIN industries_companies AS ic
+            ON c.code = ic.code
+            JOIN industries AS i
+            ON ic.ind_code = i.ind_code
+            WHERE c.code = $1`,
+            [code]
+        )
+
         if (compResult.rows.length === 0) {
         throw new ExpressError(`No such company: ${code}`, 404)
         }
 
         const company = compResult.rows[0];
         const invoices = invResult.rows;
+        const industries = indResults.rows;
 
         company.invoices = invoices.map(inv => inv.id);
+        company.industries = industries.map(ind => ind.industry);
 
         return res.json({"company": company});
     } catch(err) {
@@ -47,8 +60,8 @@ router.get('/:code', async(req, res, next) => {
 
 router.post('/', async(req, res, next) => {
     try{
-        const { code, name, description } = req.body;
-        const results = await db.query('INSERT INTO companies (code, name, description) VALUES ($1, $2, $3) RETURNING code, name, description', [code, name, description]);
+        const { name, description } = req.body;
+        const results = await db.query('INSERT INTO companies (code, name, description) VALUES ($1, $2, $3) RETURNING code, name, description', [slugify(name), name, description]);
         return res.status(201).json({company: results.rows[0]});
     } catch(err) {
         return next(err)
